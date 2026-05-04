@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🧧 幸運抽籤</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+    body { margin: 0; font-family: 'Noto Sans TC', sans-serif; background: #FFF5F5; -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const C = { bg: "#FFF5F5", card: "#FFFFFF", stroke: "#1A1A1A", primary: "#FF4D4D", accent: "#FFB800", subAccent: "#FF8A00", text: "#1A1A1A", sub: "#6B7280" };
+    const FRUITS = [
+      { id: "pineapple", name: "鳳  梨", emoji: "🍍", special: true, accent: "#FFD97D" },
+      { id: "honeydew", name: "哈密瓜", emoji: "🍈", special: false, accent: "#B5EAD7" },
+      { id: "cantaloupe", name: "香  瓜", emoji: "🍐", special: false, accent: "#FFDAC1" },
+      { id: "dragonfruit", name: "火龍果", emoji: "🐉", special: false, accent: "#FFB7CE" },
+      { id: "persimmon", name: "柿  子", emoji: "🟠", special: false, accent: "#FFCBA4" },
+      { id: "orange", name: "橘  子", emoji: "🍊", special: false, accent: "#FFC8A2" },
+      { id: "apple", name: "蘋  果", emoji: "🍎", special: false, accent: "#FF9AA2" },
+      { id: "banana", name: "香  蕉", emoji: "🍌", special: false, accent: "#FFF0A0" }
+    ];
+    const GLOBAL_CSS = `
+      * { box-sizing: border-box; }
+      @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+      @keyframes wobble { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+      @keyframes burst { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; } }
+    `;
+    function mkCard(extra) { return Object.assign({ background: C.card, border: "2.5px solid #1A1A1A", borderRadius: 20, boxShadow: "4px 4px 0 #1A1A1A", padding: "18px 16px", margin: "14px 14px 0", width: "calc(100% - 28px)", maxWidth: 460 }, extra); }
+    function mkBtn(bg, extra) { return Object.assign({ width: "calc(100% - 28px)", maxWidth: 460, margin: "14px 14px 0", padding: "15px 0", borderRadius: 16, border: "2.5px solid #1A1A1A", boxShadow: "4px 4px 0 #1A1A1A", background: bg || C.primary, color: "#1A1A1A", fontSize: "1.05rem", fontWeight: "800", cursor: "pointer", display: "block", textAlign: "center" }, extra); }
+    
+    function LotteryApp() {
+      const [page, setPage] = useState("setup");
+      const [config, setConfig] = useState(FRUITS.reduce((acc, f)=>({...acc, [f.id]:{enabled:false,total:"",perDraw:""}}), {}));
+      const [pool, setPool] = useState([]);
+      const [remaining, setRemaining] = useState({});
+      const [drawCount, setDrawCount] = useState(1);
+      const [drawResult, setDrawResult] = useState([]);
+      const [animating, setAnimating] = useState(false);
+
+      const buildPool = () => {
+        const enabled = FRUITS.filter(f => config[f.id].enabled);
+        if(!enabled.length) return alert("請至少選擇一種水果");
+        let newPool = [];
+        let newRem = {};
+        enabled.forEach(f => {
+          const total = parseInt(config[f.id].total) || 0;
+          for(let i=0; i<total; i++) newPool.push({...f, perDraw: parseInt(config[f.id].perDraw)||1});
+          newRem[f.id] = total;
+        });
+        setPool(newPool.sort(()=>Math.random()-0.5));
+        setRemaining(newRem);
+        setPage("draw");
+      };
+
+      const handleDraw = () => {
+        setAnimating(true);
+        setTimeout(() => {
+          const drawn = pool.slice(0, drawCount);
+          setPool(pool.slice(drawCount));
+          const newRem = {...remaining};
+          drawn.forEach(d => newRem[d.id]--);
+          setRemaining(newRem);
+          setDrawResult(drawn);
+          setAnimating(false);
+          setPage(drawn.some(d=>d.special) ? "special" : "result");
+        }, 1500);
+      };
+
+      if (animating) return <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', fontWeight:'900', color:C.primary}}>🎋 運勢轉動中...</div>;
+
+      if (page === "setup") return (
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', paddingBottom:40}}>
+          <div style={{width:'100%', background:C.primary, padding:'20px', textAlign:'center', color:'#FFF', fontWeight:'900', fontSize:'1.4rem'}}>🧧 抽籤設定</div>
+          <div style={mkCard()}>
+            {FRUITS.map(f => (
+              <div key={f.id} style={{display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px dashed #DDD'}}>
+                <div onClick={()=>setConfig({...config, [f.id]:{...config[f.id], enabled:!config[f.id].enabled}})} style={{width:24, height:24, borderRadius:6, border:'2px solid #1A1A1A', background:config[f.id].enabled?C.primary:'#FFF'}}></div>
+                <span style={{fontWeight:'800'}}>{f.name}</span>
+                {config[f.id].enabled && <input style={{flex:1, border:'2px solid #1A1A1A', borderRadius:8, padding:5}} type="number" placeholder="總數" onChange={e=>setConfig({...config, [f.id]:{...config[f.id], total:e.target.value}})} />}
+              </div>
+            ))}
+          </div>
+          <button style={mkBtn(C.primary, {color:'#FFF'})} onClick={buildPool}>開始好運 🧧</button>
+        </div>
+      );
+
+      if (page === "draw") return (
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
+          <div style={{width:'100%', background:C.primary, padding:'20px', textAlign:'center', color:'#FFF', fontWeight:'900'}}>進行抽籤</div>
+          <div style={mkCard()}>
+            <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
+              {Object.entries(remaining).map(([id, count]) => count > 0 && <div key={id} style={{padding:'5px 10px', border:'2px solid #1A1A1A', borderRadius:10, background:'#FFF'}}>{FRUITS.find(f=>f.id===id).emoji} {count}</div>)}
+            </div>
+          </div>
+          <button style={mkBtn(C.accent)} onClick={handleDraw}>開始抽籤 🎋</button>
+        </div>
+      );
+
+      if (page === "result" || page === "special") return (
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', background: page==='special'?C.accent:C.bg, minHeight:'100vh'}}>
+          <div style={mkCard({marginTop:60, textAlign:'center'})}>
+            <div style={{fontSize:'4rem'}}>{page==='special'?'🍍':'🎁'}</div>
+            <h2 style={{color:C.primary}}>{page==='special'?'大吉大利！':'抽籤結果'}</h2>
+            {drawResult.map((d,i)=><div key={i}>{d.emoji} {d.name}</div>)}
+            <button style={mkBtn(C.primary, {color:'#FFF', marginTop:20})} onClick={()=>setPage("draw")}>繼續</button>
+          </div>
+        </div>
+      );
+    }
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<LotteryApp />);
+  </script>
+</body>
+</html>
