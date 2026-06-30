@@ -33,15 +33,24 @@ function shuffle(arr) {
   return a;
 }
 
+function groupDrawResult(list) {
+  const grouped = {};
+  for (const d of list) {
+    if (!grouped[d.id]) grouped[d.id] = { ...d, slots: 0, totalQty: 0 };
+    grouped[d.id].slots += 1;
+    grouped[d.id].totalQty += d.perDraw;
+  }
+  return Object.values(grouped);
+}
+
 const FRUITS_RAW = [
   { id:"pineapple",   name:"鳳梨",   special:true,  locked:true, fixedTotal:3, fixedPerDraw:1 },
-  { id:"honeydew",    name:"哈密瓜", special:false },
-  { id:"kiwi",        name:"奇異果", special:false },
-  { id:"dragonfruit", name:"火龍果", special:false },
-  { id:"persimmon",   name:"柿子",   special:false },
-  { id:"orange",      name:"橘子",   special:false },
   { id:"apple",       name:"蘋果",   special:false },
   { id:"banana",      name:"香蕉",   special:false },
+  { id:"orange",      name:"橘子",   special:false },
+  { id:"persimmon",   name:"柿子",   special:false },
+  { id:"dragonfruit", name:"火龍果", special:false },
+  { id:"melon",       name:"香瓜",   special:false },
 ];
 const FRUITS = FRUITS_RAW.map(f => ({ ...f, displayName: padName(f.name) }));
 const DEFAULT_CONFIG = FRUITS.reduce(
@@ -252,22 +261,29 @@ function App() {
   }, [page]);
 
   function buildPool() {
-    const enabled = allFruits.filter(f => config[f.id].enabled);
+    const enabled = allFruits.filter(f => config[f.id]?.enabled);
     if (!enabled.length) { setWarn("請至少勾選一種水果！"); return; }
     for (const f of enabled) {
       if (f.locked) continue;
-      const c = config[f.id];
-      const total = Number(c.total), per = Number(c.perDraw) || 1;
-      if (!c.total || total < 1) { setWarn(`「${f.name}」請填入總籤數！`); return; }
-      if (per > 1 && total % per !== 0) {
-        setWarn(`「${f.name}」總籤數（${total}）無法被每籤數量（${per}）整除！`); return;
+      const c = config[f.id] || {};
+      const total = Number(c.total);
+      const per = c.perDraw === "" ? 1 : Number(c.perDraw);
+
+      if (!Number.isInteger(total) || total < 1) {
+        setWarn(`「${f.name}」請填入有效的總籤數！`);
+        return;
+      }
+      if (!Number.isInteger(per) || per < 1) {
+        setWarn(`「${f.name}」請填入有效的每籤獲得數量！`);
+        return;
       }
     }
     setWarn("");
     const newPool = [], newRem = {};
     for (const f of enabled) {
-      const total = f.locked ? f.fixedTotal : Number(config[f.id].total);
-      const per   = f.locked ? f.fixedPerDraw : (Number(config[f.id].perDraw) || 1);
+      const c = config[f.id] || {};
+      const total = f.locked ? f.fixedTotal : Number(c.total);
+      const per   = f.locked ? f.fixedPerDraw : (c.perDraw === "" ? 1 : Number(c.perDraw));
       for (let i = 0; i < total; i++) newPool.push({ ...f, perDraw: per });
       newRem[f.id] = total * per;
     }
@@ -387,14 +403,14 @@ function App() {
                 <div style={{ display: "flex", gap: 8, flex: 1 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3, letterSpacing:"0.08em" }}>總籤數</div>
-                    <input style={inputSt} type="number" min="1" placeholder="張"
+                    <input style={inputSt} type="number" min="1" step="1" inputMode="numeric" placeholder="張"
                       value={c.total}
                       onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...prev[f.id], total: e.target.value } }))}
                     />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3, letterSpacing:"0.08em" }}>每籤獲得</div>
-                    <input style={inputSt} type="number" min="1" placeholder="個"
+                    <input style={inputSt} type="number" min="1" step="1" inputMode="numeric" placeholder="個"
                       value={c.perDraw}
                       onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...prev[f.id], perDraw: e.target.value } }))}
                     />
@@ -445,14 +461,14 @@ function App() {
                     <div style={{ display:"flex", gap:8, flex:1 }}>
                       <div style={{flex:1}}>
                         <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3 }}>總籤數</div>
-                        <input style={inputSt} type="number" min="1" placeholder="張"
+                        <input style={inputSt} type="number" min="1" step="1" inputMode="numeric" placeholder="張"
                           value={c.total || ""}
                           onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...(prev[f.id]||{}), total: e.target.value } }))}
                         />
                       </div>
                       <div style={{flex:1}}>
                         <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3 }}>每籤獲得</div>
-                        <input style={inputSt} type="number" min="1" placeholder="個"
+                        <input style={inputSt} type="number" min="1" step="1" inputMode="numeric" placeholder="個"
                           value={c.perDraw || ""}
                           onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...(prev[f.id]||{}), perDraw: e.target.value } }))}
                         />
@@ -484,7 +500,7 @@ function App() {
             </div>
             <input
               style={{ ...inputSt, textAlign:"left", background:C.white, border:`1.5px solid ${newFruitErr ? C.red : C.divider}` }}
-              placeholder="例：西瓜、葡萄..."
+              placeholder="例：奇異果、水梨..."
               value={newFruitName}
               maxLength={5}
               onChange={e => { setNewFruitName(e.target.value); setNewFruitErr(""); }}
@@ -584,7 +600,7 @@ function App() {
             <StepBtn onClick={() => setDrawCount(v => Math.max(1, (parseInt(v, 10) || 1) - 1))}>−</StepBtn>
             <input
               style={{ ...inputSt, flex: 1, fontSize: "1.5rem", fontWeight: "900", border: `1.5px solid ${C.red}` }}
-              type="number" min="1" value={drawCount}
+              type="number" min="1" step="1" inputMode="numeric" value={drawCount}
               onChange={e => {
                 const raw = e.target.value;
                 if (raw === "") { setDrawCount(""); return; }
@@ -622,13 +638,7 @@ function App() {
   }
 
   if (page === "result") {
-    const grouped = {};
-    for (const d of drawResult) {
-      if (!grouped[d.id]) grouped[d.id] = { ...d, slots: 0, totalQty: 0 };
-      grouped[d.id].slots += 1;
-      grouped[d.id].totalQty += d.perDraw;
-    }
-    const items = Object.values(grouped);
+    const items = groupDrawResult(drawResult);
     return (
       <div style={wrap}>
         <style>{CSS}</style>
@@ -677,8 +687,11 @@ function App() {
   }
 
   if (page === "special") {
-    const qty = drawResult.filter(d => d.special).reduce((s, d) => s + d.perDraw, 0);
-    const others = [...new Set(drawResult.filter(d => !d.special).map(d => d.name))];
+    const items = groupDrawResult(drawResult);
+    const specialItems = items.filter(item => item.special);
+    const mainSpecial = specialItems[0];
+    const specialQty = specialItems.reduce((s, item) => s + item.totalQty, 0);
+    const totalDrawSlots = drawResult.length;
     return (
       <div style={{
         minHeight: "100vh", background: C.red,
@@ -729,7 +742,7 @@ function App() {
             animationIterationCount: "infinite", animationDirection: "alternate",
             letterSpacing: "0.1em",
           }}>
-            鳳梨
+            {mainSpecial?.name || "鳳梨"}
           </div>
 
           <div style={{
@@ -740,21 +753,50 @@ function App() {
             background: C.redPale,
             border: `1.5px solid ${C.red}`,
           }}>
-            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"2.2rem", color:C.red }}>× {qty}</span>
+            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"2.2rem", color:C.red }}>× {specialQty}</span>
             <span style={{ fontFamily:FONT, fontWeight:"700", fontSize:"1rem", color:C.muted, marginLeft:6 }}>個</span>
           </div>
 
-          {others.length > 0 && (
-            <div style={{
-              marginTop: 16, padding: "10px 14px",
-              borderRadius: 8, background: C.bg,
-              border: `1px solid ${C.divider}`,
-              fontFamily:FONT, fontWeight:"700",
-              fontSize:"0.85rem", color:C.muted,
-            }}>
-              另外還抽到：{others.join("、")}
-            </div>
-          )}
+          <div style={{
+            marginTop: 16,
+            fontFamily:FONT,
+            fontWeight:"700",
+            fontSize:"0.82rem",
+            color:C.muted,
+          }}>
+            本次共抽 {totalDrawSlots} 籤，以下為完整結果
+          </div>
+
+          <div style={{
+            marginTop: 12, padding: "12px 14px",
+            borderRadius: 8, background: C.bg,
+            border: `1px solid ${C.divider}`,
+            textAlign: "left",
+          }}>
+            {items.map((item, i) => (
+              <div key={item.id} style={{
+                display:"flex",
+                justifyContent:"space-between",
+                alignItems:"center",
+                gap: 12,
+                padding:"8px 0",
+                borderBottom: i < items.length - 1 ? `1px solid ${C.divider}` : "none",
+              }}>
+                <div>
+                  <div style={{ fontFamily:FONT, fontWeight:"900", fontSize:"0.95rem", color:C.text }}>
+                    {item.name}
+                  </div>
+                  <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.7rem", color:C.muted, marginTop:2 }}>
+                    抽中 {item.slots} 籤
+                  </div>
+                </div>
+                <div style={{ fontFamily:FONT, fontWeight:"900", fontSize:"1.2rem", color:item.special ? C.red : C.text, flexShrink:0 }}>
+                  {item.totalQty}
+                  <span style={{ fontSize:"0.75rem", color:C.muted, marginLeft:4 }}>個</span>
+                </div>
+              </div>
+            ))}
+          </div>
 
           <button
             style={{
