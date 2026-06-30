@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>水果籤</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #FDF5F5; }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+function padName(n) {
+  const chars = n.replace(/\s/g, "");
+  return chars.length === 2 ? chars[0] + "\u3000" + chars[1] : n;
+}
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const FRUITS_RAW = [
+  { id:"pineapple",   name:"鳳梨",   special:true,  locked:true, fixedTotal:3, fixedPerDraw:1 },
+  { id:"honeydew",    name:"哈密瓜", special:false },
+  { id:"kiwi",        name:"奇異果", special:false },
+  { id:"dragonfruit", name:"火龍果", special:false },
+  { id:"persimmon",   name:"柿子",   special:false },
+  { id:"orange",      name:"橘子",   special:false },
+  { id:"apple",       name:"蘋果",   special:false },
+  { id:"banana",      name:"香蕉",   special:false },
+];
+const FRUITS = FRUITS_RAW.map(f => ({ ...f, displayName: padName(f.name) }));
+const DEFAULT_CONFIG = FRUITS.reduce(
+  (acc, f) => ({
+    ...acc,
+    [f.id]: f.locked
+      ? { enabled: true, total: String(f.fixedTotal), perDraw: String(f.fixedPerDraw) }
+      : { enabled: false, total: "", perDraw: "" }
+  }), {}
+);
+
+const C = {
+  red:    "#C00000",
+  redDk:  "#800000",
+  redLt:  "#E53030",
+  redPale:"#FFF0F0",
+  bg:     "#FDF5F5",
+  white:  "#FFFFFF",
+  border: "#C00000",
+  text:   "#1A0000",
+  muted:  "#8B3A3A",
+  divider:"#F0C8C8",
+};
+
+const CSS = `
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; }
+  input[type=number] { -moz-appearance:textfield; }
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(10px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes popIn {
+    0%   { opacity:0; transform:scale(0.85); }
+    100% { opacity:1; transform:scale(1); }
+  }
+  @keyframes burst {
+    0%   { transform:translate(0,0) scale(1); opacity:1; }
+    100% { transform:translate(var(--dx),var(--dy)) scale(0); opacity:0; }
+  }
+  @keyframes bounce {
+    from { transform:translateY(0); }
+    to   { transform:translateY(-10px); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+`;
+
+const FONT = "'Noto Sans TC', sans-serif";
+
+const card = (extra) => ({
+  background: C.white,
+  border: `1.5px solid ${C.divider}`,
+  borderRadius: 12,
+  padding: "20px 18px",
+  margin: "12px 16px 0",
+  width: "calc(100% - 32px)",
+  maxWidth: 460,
+  ...extra,
+});
+
+const primaryBtn = (extra) => ({
+  width: "calc(100% - 32px)",
+  maxWidth: 460,
+  margin: "12px 16px 0",
+  padding: "14px 0",
+  borderRadius: 8,
+  border: "none",
+  background: C.red,
+  color: "#fff",
+  fontSize: "1rem",
+  fontWeight: "900",
+  letterSpacing: "0.18em",
+  cursor: "pointer",
+  fontFamily: FONT,
+  display: "block",
+  textAlign: "center",
+  ...extra,
+});
+
+const ghostBtn = (extra) => ({
+  ...primaryBtn(),
+  background: "transparent",
+  border: `1.5px solid ${C.red}`,
+  color: C.red,
+  fontWeight: "700",
+  ...extra,
+});
+
+const inputSt = {
+  background: C.bg,
+  border: `1.5px solid ${C.divider}`,
+  borderRadius: 6,
+  color: C.text,
+  fontSize: "0.95rem",
+  fontWeight: "700",
+  padding: "7px 10px",
+  width: "100%",
+  outline: "none",
+  textAlign: "center",
+  fontFamily: FONT,
+};
+
+function Header({ title, sub }) {
+  return (
+    <div style={{
+      width: "100%",
+      background: C.red,
+      padding: "22px 0 18px",
+      textAlign: "center",
+    }}>
+      <div style={{
+        fontFamily: FONT, fontWeight: "900",
+        fontSize: "1.6rem", letterSpacing: "0.35em",
+        color: "#fff",
+      }}>{title}</div>
+      {sub && (
+        <div style={{
+          fontFamily: FONT, fontWeight: "700",
+          fontSize: "0.62rem", letterSpacing: "0.3em",
+          color: "rgba(255,255,255,0.65)", marginTop: 5,
+        }}>{sub}</div>
+      )}
+    </div>
+  );
+}
+
+function Label({ children }) {
+  return (
+    <div style={{
+      fontFamily: FONT, fontWeight: "900",
+      fontSize: "0.68rem", letterSpacing: "0.22em",
+      color: C.red, marginBottom: 14,
+      display: "flex", alignItems: "center", gap: 8,
+    }}>
+      <span style={{ flex:1, height:"1.5px", background: C.divider }}/>
+      {children}
+      <span style={{ flex:1, height:"1.5px", background: C.divider }}/>
+    </div>
+  );
+}
+
+function Warn({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{
+      ...card({ background: C.redPale, border: `1.5px solid ${C.red}` }),
+      fontFamily: FONT, fontWeight: "700",
+      fontSize: "0.85rem", color: C.red,
+    }}>
+      ⚠️ {msg}
+    </div>
+  );
+}
+
+function StepBtn({ onClick, children }) {
+  return (
+    <button onClick={onClick} style={{
+      width: 44, height: 44, borderRadius: 8,
+      border: `1.5px solid ${C.red}`,
+      background: C.redPale, color: C.red,
+      fontSize: "1.4rem", fontWeight: "900",
+      cursor: "pointer", flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: FONT,
+    }}>{children}</button>
+  );
+}
+
+function App() {
+  const [page,       setPage]       = useState("setup");
+  const [config,     setConfig]     = useState(DEFAULT_CONFIG);
+  const [pool,       setPool]       = useState([]);
+  const [remaining,  setRemaining]  = useState({});
+  const [drawCount,  setDrawCount]  = useState(1);
+  const [drawResult, setDrawResult] = useState([]);
+  const [animating,  setAnimating]  = useState(false);
+  const [warn,       setWarn]       = useState("");
+  const [particles,  setParticles]  = useState([]);
+  const [dots,         setDots]         = useState(0);
+  const [customFruits, setCustomFruits] = useState([]);
+  const [newFruitName, setNewFruitName] = useState("");
+  const [newFruitErr,  setNewFruitErr]  = useState("");
+
+  const allFruits = [...FRUITS, ...customFruits];
+  const totalRemaining = pool.length;
+
+  useEffect(() => {
+    if (!animating) return;
+    const t = setInterval(() => setDots(d => (d + 1) % 4), 400);
+    return () => clearInterval(t);
+  }, [animating]);
+
+  useEffect(() => {
+    if (page === "special") {
+      setParticles(Array.from({ length: 32 }, (_, i) => ({
+        id: i,
+        x: Math.random() * 90 + 5,
+        y: Math.random() * 80 + 5,
+        color: [C.red, C.redLt, "#fff", "#FFD700", C.redPale][i % 5],
+        size: Math.random() * 10 + 5,
+        delay: Math.random() * 1.2,
+        dur: Math.random() * 1 + 0.8,
+        dx: (Math.random() - 0.5) * 90,
+        dy: -(Math.random() * 100 + 20),
+        round: i % 2 === 0,
+      })));
+    }
+  }, [page]);
+
+  function buildPool() {
+    const enabled = allFruits.filter(f => config[f.id].enabled);
+    if (!enabled.length) { setWarn("請至少勾選一種水果！"); return; }
+    for (const f of enabled) {
+      if (f.locked) continue;
+      const c = config[f.id];
+      const total = Number(c.total), per = Number(c.perDraw) || 1;
+      if (!c.total || total < 1) { setWarn(`「${f.name}」請填入總籤數！`); return; }
+      if (per > 1 && total % per !== 0) {
+        setWarn(`「${f.name}」總籤數（${total}）無法被每籤數量（${per}）整除！`); return;
+      }
+    }
+    setWarn("");
+    const newPool = [], newRem = {};
+    for (const f of enabled) {
+      const total = f.locked ? f.fixedTotal : Number(config[f.id].total);
+      const per   = f.locked ? f.fixedPerDraw : (Number(config[f.id].perDraw) || 1);
+      for (let i = 0; i < total; i++) newPool.push({ ...f, perDraw: per });
+      newRem[f.id] = total * per;
+    }
+    setPool(shuffle(newPool)); setRemaining(newRem);
+    setDrawCount(1); setPage("draw");
+  }
+
+  function handleDraw() {
+    let cnt = parseInt(drawCount, 10);
+    if (isNaN(cnt) || cnt < 1) cnt = 1;
+    if (cnt > totalRemaining) cnt = totalRemaining;
+    setDrawCount(cnt); setWarn(""); setAnimating(true); setDots(0);
+    setTimeout(() => {
+      const drawn = pool.slice(0, cnt), newPool = pool.slice(cnt);
+      const newRem = { ...remaining };
+      for (const d of drawn) newRem[d.id] = (newRem[d.id] || 0) - d.perDraw;
+      setPool(newPool); setRemaining(newRem); setDrawResult(drawn);
+      setAnimating(false); setDrawCount(1);
+      setPage(drawn.some(d => d.special) ? "special" : "result");
+    }, 1800);
+  }
+
+  function resetToSetup() {
+    setPage("setup"); setConfig({ ...DEFAULT_CONFIG });
+    setPool([]); setRemaining({}); setDrawCount(1); setDrawResult([]);
+    setWarn(""); setAnimating(false); setParticles([]);
+    setCustomFruits([]); setNewFruitName(""); setNewFruitErr("");
+  }
+
+  const wrap = {
+    minHeight: "100vh", background: C.bg,
+    fontFamily: FONT,
+    display: "flex", flexDirection: "column",
+    alignItems: "center", paddingBottom: 48,
+  };
+
+  if (animating) return (
+    <div style={{ ...wrap, justifyContent: "center", alignItems: "center" }}>
+      <style>{CSS}</style>
+      <div style={{
+        fontFamily: FONT, fontWeight: "900",
+        fontSize: "1.1rem", letterSpacing: "0.25em",
+        color: C.red,
+      }}>
+        抽 籤 中{"．".repeat(dots)}
+      </div>
+      <div style={{
+        marginTop: 32,
+        width: 56, height: 56,
+        borderRadius: "50%",
+        border: `4px solid ${C.divider}`,
+        borderTop: `4px solid ${C.red}`,
+        animation: "spin 0.8s linear infinite",
+      }}/>
+    </div>
+  );
+
+  if (page === "setup") return (
+    <div style={wrap}>
+      <style>{CSS}</style>
+      <Header title="水果籤" sub="LOTTERY · 設定"/>
+
+      <div style={card()}>
+        <Label>選擇水果 &amp; 設定數量</Label>
+        {FRUITS.map(f => {
+          const c = config[f.id];
+          return (
+            <div key={f.id} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "11px 0",
+              borderBottom: `1px solid ${C.divider}`,
+            }}>
+              <div
+                onClick={() => { if (!f.locked) setConfig(prev => ({
+                  ...prev, [f.id]: { ...prev[f.id], enabled: !prev[f.id].enabled }
+                })); }}
+                style={{
+                  width: 22, height: 22, borderRadius: 4,
+                  border: `2px solid ${c.enabled ? C.red : C.divider}`,
+                  background: c.enabled ? C.red : C.white,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: f.locked ? "default" : "pointer",
+                  flexShrink: 0, transition: "all 0.12s",
+                  opacity: f.locked ? 0.85 : 1,
+                }}
+              >
+                {c.enabled && (
+                  <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                    <path d="M1 4.5L4.5 8L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+
+              <span style={{
+                fontFamily: FONT, fontWeight: "900",
+                fontSize: "1rem", minWidth: 58, flexShrink: 0,
+                color: c.enabled ? C.text : C.muted,
+                letterSpacing: "0.05em",
+                display: "flex", alignItems: "center", gap: 5,
+              }}>
+                {f.displayName}
+                {f.locked && (
+                  <svg width="11" height="13" viewBox="0 0 11 13" fill="none" style={{ flexShrink:0 }}>
+                    <rect x="1" y="6" width="9" height="6" rx="1" stroke={C.red} strokeWidth="1.3" fill={C.redPale}/>
+                    <path d="M3 6V4a2.5 2.5 0 0 1 5 0v2" stroke={C.red} strokeWidth="1.3" fill="none"/>
+                  </svg>
+                )}
+              </span>
+
+              {f.locked ? (
+                <div style={{ display:"flex", gap:8, flex:1, alignItems:"center" }}>
+                  <span style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.85rem", color:C.muted }}>
+                    固定：總籤數 <b style={{ color:C.red }}>{f.fixedTotal}</b>　每籤獲得 <b style={{ color:C.red }}>{f.fixedPerDraw}</b>
+                  </span>
+                </div>
+              ) : c.enabled ? (
+                <div style={{ display: "flex", gap: 8, flex: 1 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3, letterSpacing:"0.08em" }}>總籤數</div>
+                    <input style={inputSt} type="number" min="1" placeholder="張"
+                      value={c.total}
+                      onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...prev[f.id], total: e.target.value } }))}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3, letterSpacing:"0.08em" }}>每籤獲得</div>
+                    <input style={inputSt} type="number" min="1" placeholder="個"
+                      value={c.perDraw}
+                      onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...prev[f.id], perDraw: e.target.value } }))}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <span style={{ fontFamily:FONT, fontSize:"0.8rem", color:C.divider, flex:1 }}>— 未啟用 —</span>
+              )}
+            </div>
+          );
+        })}
+
+        {customFruits.length > 0 && (
+          <>
+            <div style={{ height: 1, background: C.divider, margin: "14px 0 12px" }}/>
+            <Label>自訂水果</Label>
+            {customFruits.map(f => {
+              const c = config[f.id] || { enabled: false, total: "", perDraw: "" };
+              return (
+                <div key={f.id} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "11px 0",
+                  borderBottom: `1px solid ${C.divider}`,
+                }}>
+                  <div
+                    onClick={() => setConfig(prev => ({
+                      ...prev,
+                      [f.id]: { ...(prev[f.id] || { total: "", perDraw: "" }), enabled: !(prev[f.id] || {}).enabled }
+                    }))}
+                    style={{
+                      width: 22, height: 22, borderRadius: 4,
+                      border: `2px solid ${c.enabled ? C.red : C.divider}`,
+                      background: c.enabled ? C.red : C.white,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer", flexShrink: 0, transition: "all 0.12s",
+                    }}
+                  >
+                    {c.enabled && (
+                      <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                        <path d="M1 4.5L4.5 8L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"1rem", minWidth:58, flexShrink:0, color: c.enabled ? C.text : C.muted, letterSpacing:"0.05em" }}>
+                    {f.displayName}
+                  </span>
+                  {c.enabled ? (
+                    <div style={{ display:"flex", gap:8, flex:1 }}>
+                      <div style={{flex:1}}>
+                        <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3 }}>總籤數</div>
+                        <input style={inputSt} type="number" min="1" placeholder="張"
+                          value={c.total || ""}
+                          onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...(prev[f.id]||{}), total: e.target.value } }))}
+                        />
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.58rem", color:C.muted, marginBottom:3 }}>每籤獲得</div>
+                        <input style={inputSt} type="number" min="1" placeholder="個"
+                          value={c.perDraw || ""}
+                          onChange={e => setConfig(prev => ({ ...prev, [f.id]: { ...(prev[f.id]||{}), perDraw: e.target.value } }))}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ fontFamily:FONT, fontSize:"0.8rem", color:C.divider, flex:1 }}>— 未啟用 —</span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setCustomFruits(prev => prev.filter(x => x.id !== f.id));
+                      setConfig(prev => { const n = { ...prev }; delete n[f.id]; return n; });
+                    }}
+                    style={{ width:28, height:28, borderRadius:6, border:`1.5px solid ${C.divider}`, background:C.bg, color:C.muted, fontSize:"0.9rem", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontFamily:FONT }}
+                  >✕</button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+
+      <div style={card({ background: C.redPale, border: `1.5px dashed ${C.red}` })}>
+        <Label>新增水果品項</Label>
+        <div style={{ display:"flex", gap:10, alignItems:"flex-end" }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.62rem", color:C.muted, marginBottom:5, letterSpacing:"0.08em" }}>
+              水果名稱（最多 5 字）
+            </div>
+            <input
+              style={{ ...inputSt, textAlign:"left", background:C.white, border:`1.5px solid ${newFruitErr ? C.red : C.divider}` }}
+              placeholder="例：西瓜、葡萄..."
+              value={newFruitName}
+              maxLength={5}
+              onChange={e => { setNewFruitName(e.target.value); setNewFruitErr(""); }}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  const name = newFruitName.trim();
+                  if (!name) { setNewFruitErr("請輸入名稱"); return; }
+                  if (allFruits.some(f => f.name === name)) { setNewFruitErr("此水果已存在！"); return; }
+                  const id = "custom_" + Date.now();
+                  const newF = { id, name, displayName: padName(name), special: false };
+                  setCustomFruits(prev => [...prev, newF]);
+                  setConfig(prev => ({ ...prev, [id]: { enabled: true, total: "", perDraw: "" } }));
+                  setNewFruitName(""); setNewFruitErr("");
+                }
+              }}
+            />
+            {newFruitErr && <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.75rem", color:C.red, marginTop:4 }}>⚠️ {newFruitErr}</div>}
+          </div>
+          <button
+            onClick={() => {
+              const name = newFruitName.trim();
+              if (!name) { setNewFruitErr("請輸入名稱"); return; }
+              if (allFruits.some(f => f.name === name)) { setNewFruitErr("此水果已存在！"); return; }
+              const id = "custom_" + Date.now();
+              const newF = { id, name, displayName: padName(name), special: false };
+              setCustomFruits(prev => [...prev, newF]);
+              setConfig(prev => ({ ...prev, [id]: { enabled: true, total: "", perDraw: "" } }));
+              setNewFruitName(""); setNewFruitErr("");
+            }}
+            style={{
+              padding: "8px 18px", borderRadius: 8,
+              border: "none", background: C.red, color: "#fff",
+              fontFamily: FONT, fontWeight: "900",
+              fontSize: "0.95rem", cursor: "pointer",
+              flexShrink: 0, height: 38,
+              letterSpacing: "0.1em",
+            }}
+          >新增</button>
+        </div>
+      </div>
+
+      <Warn msg={warn}/>
+      <button style={primaryBtn()} onClick={buildPool}>建立抽籤池</button>
+    </div>
+  );
+
+  if (page === "draw") {
+    const fruitStats = allFruits.filter(f => config[f.id].enabled && Number(config[f.id].total) > 0);
+    return (
+      <div style={wrap}>
+        <style>{CSS}</style>
+        <Header title="水果籤" sub="LOTTERY · 抽籤"/>
+
+        <div style={card()}>
+          <Label>各水果剩餘數量</Label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {fruitStats.map(f => {
+              const rem = remaining[f.id] ?? 0;
+              return (
+                <div key={f.id} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "6px 12px",
+                  borderRadius: 20,
+                  border: `1.5px solid ${rem > 0 ? C.red : C.divider}`,
+                  background: rem > 0 ? C.redPale : C.bg,
+                  opacity: rem > 0 ? 1 : 0.4,
+                }}>
+                  <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"0.85rem", color: rem > 0 ? C.text : C.muted }}>
+                    {f.name}
+                  </span>
+                  <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"1rem", color: rem > 0 ? C.red : C.muted }}>
+                    {rem}
+                  </span>
+                  <span style={{ fontFamily:FONT, fontSize:"0.68rem", color:C.muted }}>個</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{
+            marginTop: 14, padding: "12px 16px",
+            borderRadius: 8, background: C.red,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+          }}>
+            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"0.88rem", color:"#fff", letterSpacing:"0.1em" }}>
+              總剩餘籤數
+            </span>
+            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"1.7rem", color:"#fff" }}>
+              {totalRemaining} <span style={{ fontSize:"0.9rem" }}>張</span>
+            </span>
+          </div>
+        </div>
+
+        <div style={card()}>
+          <Label>本次抽籤數量</Label>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <StepBtn onClick={() => setDrawCount(v => Math.max(1, (parseInt(v, 10) || 1) - 1))}>−</StepBtn>
+            <input
+              style={{ ...inputSt, flex: 1, fontSize: "1.5rem", fontWeight: "900", border: `1.5px solid ${C.red}` }}
+              type="number" min="1" value={drawCount}
+              onChange={e => {
+                const raw = e.target.value;
+                if (raw === "") { setDrawCount(""); return; }
+                const v = parseInt(raw, 10);
+                if (isNaN(v) || v < 1) { setDrawCount(1); setWarn(""); return; }
+                if (v > totalRemaining) { setWarn(`剩餘籤數僅 ${totalRemaining} 張，已自動修正！`); setDrawCount(totalRemaining); }
+                else { setWarn(""); setDrawCount(v); }
+              }}
+            />
+            <StepBtn onClick={() => {
+              const next = (parseInt(drawCount, 10) || 1) + 1;
+              if (next > totalRemaining) setWarn(`剩餘籤數僅 ${totalRemaining} 張！`);
+              else { setWarn(""); setDrawCount(next); }
+            }}>＋</StepBtn>
+          </div>
+          {warn && (
+            <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.82rem", color:C.red, marginTop:10, padding:"8px 12px", background:C.redPale, borderRadius:6 }}>
+              ⚠️ {warn}
+            </div>
+          )}
+        </div>
+
+        <button
+          style={primaryBtn({ background: totalRemaining === 0 ? C.muted : C.red, cursor: totalRemaining === 0 ? "default" : "pointer" })}
+          onClick={handleDraw} disabled={totalRemaining === 0}
+        >
+          {totalRemaining === 0 ? "籤已抽完" : "開始抽籤"}
+        </button>
+
+        <button style={ghostBtn({ marginTop: 10, fontSize: "0.9rem" })} onClick={resetToSetup}>
+          ← 重新設定
+        </button>
+      </div>
+    );
+  }
+
+  if (page === "result") {
+    const grouped = {};
+    for (const d of drawResult) {
+      if (!grouped[d.id]) grouped[d.id] = { ...d, slots: 0, totalQty: 0 };
+      grouped[d.id].slots += 1;
+      grouped[d.id].totalQty += d.perDraw;
+    }
+    const items = Object.values(grouped);
+    return (
+      <div style={wrap}>
+        <style>{CSS}</style>
+        <Header title="水果籤" sub="LOTTERY · 結果"/>
+
+        <div style={card()}>
+          <Label>本次抽中</Label>
+          {items.map((item, i) => (
+            <div key={item.id} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "14px 0",
+              borderBottom: i < items.length - 1 ? `1px solid ${C.divider}` : "none",
+              animationName: "fadeUp", animationDuration: "0.3s",
+              animationDelay: `${i * 0.07}s`, animationFillMode: "both",
+            }}>
+              <div>
+                <div style={{ fontFamily:FONT, fontWeight:"900", fontSize:"1.1rem", color:C.text }}>
+                  {item.name}
+                </div>
+                <div style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.75rem", color:C.muted, marginTop:3 }}>
+                  抽中 {item.slots} 籤
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"2rem", color:C.red }}>
+                  {item.totalQty}
+                </span>
+                <span style={{ fontFamily:FONT, fontWeight:"700", fontSize:"0.85rem", color:C.muted, marginLeft:4 }}>個</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={card({ padding: "14px 18px" })}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"0.88rem", color:C.text }}>剩餘總籤數</span>
+            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"1.5rem", color:C.red }}>
+              {totalRemaining} <span style={{ fontSize:"0.85rem" }}>張</span>
+            </span>
+          </div>
+        </div>
+
+        <button style={primaryBtn()} onClick={() => setPage("draw")}>OK，繼續抽籤</button>
+      </div>
+    );
+  }
+
+  if (page === "special") {
+    const qty = drawResult.filter(d => d.special).reduce((s, d) => s + d.perDraw, 0);
+    const others = [...new Set(drawResult.filter(d => !d.special).map(d => d.name))];
+    return (
+      <div style={{
+        minHeight: "100vh", background: C.red,
+        fontFamily: FONT,
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        position: "relative", overflow: "hidden", padding: "40px 16px",
+      }}>
+        <style>{CSS}</style>
+
+        {particles.map(p => (
+          <div key={p.id} style={{
+            position: "absolute", left: `${p.x}%`, top: `${p.y}%`,
+            width: p.size, height: p.round ? p.size : p.size * 0.55,
+            borderRadius: p.round ? "50%" : 3,
+            background: p.color,
+            animationName: "burst", animationDuration: `${p.dur}s`,
+            animationDelay: `${p.delay}s`, animationTimingFunction: "ease-out",
+            animationIterationCount: "infinite",
+            "--dx": `${p.dx}px`, "--dy": `${p.dy}px`,
+            pointerEvents: "none",
+          }}/>
+        ))}
+
+        <div style={{
+          background: C.white, borderRadius: 16,
+          padding: "36px 28px", maxWidth: 380,
+          width: "100%", textAlign: "center",
+          zIndex: 10, position: "relative",
+          animationName: "popIn", animationDuration: "0.45s",
+          animationTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+          animationFillMode: "both",
+        }}>
+          <div style={{ position:"absolute", top:0, left:0, right:0, height:5, background:C.red, borderRadius:"16px 16px 0 0" }}/>
+
+          <div style={{
+            fontFamily: FONT, fontWeight: "900",
+            fontSize: "0.75rem", letterSpacing: "0.4em",
+            color: C.muted, marginBottom: 20, marginTop: 8,
+          }}>
+            ✦ 恭 喜 得 獎 ✦
+          </div>
+
+          <div style={{
+            fontFamily: FONT, fontWeight: "900",
+            fontSize: "3.5rem", color: C.red, lineHeight: 1,
+            animationName: "bounce", animationDuration: "0.6s",
+            animationIterationCount: "infinite", animationDirection: "alternate",
+            letterSpacing: "0.1em",
+          }}>
+            鳳梨
+          </div>
+
+          <div style={{
+            marginTop: 20,
+            display: "inline-block",
+            padding: "10px 32px",
+            borderRadius: 8,
+            background: C.redPale,
+            border: `1.5px solid ${C.red}`,
+          }}>
+            <span style={{ fontFamily:FONT, fontWeight:"900", fontSize:"2.2rem", color:C.red }}>× {qty}</span>
+            <span style={{ fontFamily:FONT, fontWeight:"700", fontSize:"1rem", color:C.muted, marginLeft:6 }}>個</span>
+          </div>
+
+          {others.length > 0 && (
+            <div style={{
+              marginTop: 16, padding: "10px 14px",
+              borderRadius: 8, background: C.bg,
+              border: `1px solid ${C.divider}`,
+              fontFamily:FONT, fontWeight:"700",
+              fontSize:"0.85rem", color:C.muted,
+            }}>
+              另外還抽到：{others.join("、")}
+            </div>
+          )}
+
+          <button
+            style={{
+              marginTop: 24, width: "100%", padding: "13px 0",
+              borderRadius: 8, border: "none",
+              background: C.red, color: "#fff",
+              fontFamily: FONT, fontWeight: "900",
+              fontSize: "1rem", letterSpacing: "0.2em",
+              cursor: "pointer",
+            }}
+            onClick={() => setPage("draw")}
+          >
+            OK
+          </button>
+
+          <div style={{ position:"absolute", bottom:0, left:0, right:0, height:5, background:C.red, borderRadius:"0 0 16px 16px" }}/>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+</script>
+</body>
+</html>
